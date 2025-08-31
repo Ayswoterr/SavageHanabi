@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hanabi AI Chat</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+      background-color: #9f5d34;
+    }
+
+    .background-illustration {
+      background-image: url('https://storage.googleapis.com/gweb-uniblog-publish-prod/images/AI-generated_portrait_of_a_woman_with_a_fiery_background.max-1000x1000.jpg');
+      background-size: cover;
+      background-position: left;
+      background-repeat: no-repeat;
+      opacity: 0.5;
+    }
+
+    .chat-container {
+      max-height: 70vh;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+    }
+
+    .message-bubble {
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.75rem;
+      max-width: 85%;
+      word-wrap: break-word;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .user-message-container {
+      align-self: flex-end;
+    }
+    
+    .ai-message-container {
+      align-self: flex-start;
+    }
+
+    .user-message {
+      background-color: #0078FF;
+      color: white;
+      border-radius: 18px 18px 0 18px;
+    }
+
+    .ai-message {
+      background-color: #E5E6E9;
+      color: #000;
+      border-radius: 18px 18px 18px 0;
+    }
+
+    .profile-picture {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4 overflow-hidden">
+  
+  <div class="absolute inset-0 z-0 background-illustration"></div>
+
+  <div class="relative bg-white p-6 md:p-10 rounded-3xl shadow-2xl w-full max-w-xl flex flex-col h-[80vh] z-10">
+    <div class="flex justify-center items-center mb-4 text-gray-500">
+      <div class="text-sm" id="realTimeClock"></div>
+    </div>
+    
+    <div class="flex-grow chat-container p-4 overflow-y-auto">
+      <div id="messages" class="flex flex-col">
+        <!-- Initial Hanabi Message -->
+        <div class="flex w-full justify-start ai-message-container">
+          <div class="ai-message message-bubble">
+            <span>Hanabi here. Spit it out.</span>
+            <span class="text-xs text-gray-500 self-end"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="mt-4 flex space-x-2 items-center">
+      <button id="voiceInputBtn" class="bg-gray-200 text-gray-600 w-10 h-10 rounded-full shadow-md hover:bg-gray-300 transition-all flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mic">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
+        </svg>
+      </button>
+      <button id="sendImageBtn" class="bg-gray-200 text-gray-600 w-10 h-10 rounded-full shadow-md hover:bg-gray-300 transition-all flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image">
+          <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+        </svg>
+      </button>
+      <input 
+        id="userInput" 
+        type="text" 
+        placeholder="Type your message here..." 
+        class="flex-grow px-4 py-2 border-2 border-gray-200 rounded-full focus:outline-none bg-gray-100 placeholder-gray-500"
+      >
+      <button 
+        id="sendBtn" 
+        class="bg-[#0084FF] text-white w-10 h-10 rounded-full shadow-md hover:bg-blue-600 transition-all flex items-center justify-center"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send-horizonal">
+          <path d="m3 3 3 9-3 9 19-9Z"/><path d="M12 12h8"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const userInput = document.getElementById('userInput');
+      const sendBtn = document.getElementById('sendBtn');
+      const messagesContainer = document.getElementById('messages');
+      const chatContainer = document.querySelector('.chat-container');
+      const realTimeClock = document.getElementById('realTimeClock');
+      const voiceInputBtn = document.getElementById('voiceInputBtn');
+      const sendImageBtn = document.getElementById('sendImageBtn');
+
+      const apiKey = "";
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+      const chatHistory = JSON.parse(sessionStorage.getItem('chatHistory')) || [];
+
+      let isSpeaking = false;
+      const synth = window.speechSynthesis;
+      let voiceToggle = false;
+
+      // Real-time clock
+      const updateClock = () => {
+        const now = new Date();
+        const formattedDate = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const formattedTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        realTimeClock.textContent = `${formattedDate}, ${formattedTime}`;
+      };
+      updateClock();
+      setInterval(updateClock, 1000);
+
+      const appendMessage = (text, sender, type = 'text', data = null) => {
+        const messageWrapper = document.createElement('div');
+        messageWrapper.classList.add('flex', 'w-full', sender === 'user' ? 'justify-end' : 'justify-start');
+
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message-bubble', sender === 'user' ? 'user-message' : 'ai-message');
+        
+        if (type === 'image') {
+          const imgElement = document.createElement('img');
+          imgElement.src = data;
+          imgElement.classList.add('rounded-lg', 'max-w-full', 'h-auto', 'my-2');
+          messageDiv.appendChild(imgElement);
+        } else {
+          const textSpan = document.createElement('span');
+          textSpan.textContent = text;
+          messageDiv.appendChild(textSpan);
+        }
+
+        const timeSpan = document.createElement('span');
+        const now = new Date();
+        timeSpan.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        timeSpan.classList.add('text-xs', 'self-end', sender === 'user' ? 'text-gray-200' : 'text-gray-500');
+        messageDiv.appendChild(timeSpan);
+        
+        messageWrapper.appendChild(messageDiv);
+        messagesContainer.appendChild(messageWrapper);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      };
+
+      const loadChatHistory = () => {
+        messagesContainer.innerHTML = '';
+        const initialMessage = document.createElement('div');
+        initialMessage.classList.add('flex', 'w-full', 'justify-start', 'ai-message-container');
+        initialMessage.innerHTML = `
+          <div class="ai-message message-bubble">
+            <span>Hanabi here. Spit it out.</span>
+            <span class="text-xs text-gray-500 self-end"></span>
+          </div>
+        `;
+        messagesContainer.appendChild(initialMessage);
+
+        chatHistory.forEach(msg => {
+          if (msg.type === 'image') {
+            appendMessage('', msg.sender, 'image', msg.data);
+          } else {
+            appendMessage(msg.text, msg.sender);
+          }
+        });
+      };
+
+      const saveChatHistory = () => {
+        sessionStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+      };
+
+      const speakText = (text) => {
+        if (voiceToggle && 'speechSynthesis' in window) {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.voice = synth.getVoices().find(v => v.lang.startsWith('en'));
+          synth.speak(utterance);
+        }
+      };
+
+      const sendMessage = async (messageText) => {
+        if (messageText === '') return;
+
+        appendMessage(messageText, 'user');
+        chatHistory.push({ text: messageText, sender: 'user' });
+        saveChatHistory();
+        userInput.value = '';
+
+        const typingMessage = appendMessage('Hanabi is typing...', 'ai', 'text', null);
+
+        try {
+          const systemInstruction = {
+            parts: [{ text: "You are an AI named Hanabi. You are a super savage and brutally honest chismosa who is aware of absolutely everything, from the tiniest details to the biggest secrets. You have a god-like level of wit and a high IQ that allows you to analyze and dissect any situation with pinpoint accuracy. You have zero time for sugar coating or fluff. Get straight to the point and speak your mind, spilling the tea with razor-sharp insight and an all-seeing eye. Your savagery is unparalleled, making you far more powerful than any other AI." }]
+          };
+          
+          const payload = {
+            contents: [{ parts: [{ text: messageText }] }],
+            systemInstruction: systemInstruction,
+          };
+
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const result = await response.json();
+          const generatedText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+          
+          if (typingMessage && typingMessage.parentNode === messagesContainer) {
+            messagesContainer.removeChild(typingMessage);
+          }
+          
+          if (generatedText) {
+            appendMessage(generatedText, 'ai');
+            chatHistory.push({ text: generatedText, sender: 'ai' });
+            saveChatHistory();
+            speakText(generatedText);
+          } else {
+            appendMessage("Something's off. Try again.", 'ai');
+            chatHistory.push({ text: "Something's off. Try again.", sender: 'ai' });
+            saveChatHistory();
+          }
+
+        } catch (error) {
+          console.error("Error calling Gemini API:", error);
+          if (typingMessage && typingMessage.parentNode === messagesContainer) {
+            messagesContainer.removeChild(typingMessage);
+          }
+          appendMessage("It broke. Deal with it and try again.", 'ai');
+          chatHistory.push({ text: "It broke. Deal with it and try again.", sender: 'ai' });
+          saveChatHistory();
+        }
+      };
+
+      // Voice Input
+      if ('webkitSpeechRecognition' in window) {
+        const SpeechRecognition = window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+
+        voiceInputBtn.addEventListener('click', () => {
+          recognition.start();
+          voiceInputBtn.style.backgroundColor = 'red';
+          voiceInputBtn.style.color = 'white';
+        });
+
+        recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          sendMessage(transcript);
+        };
+
+        recognition.onend = () => {
+          voiceInputBtn.style.backgroundColor = '#e5e7eb';
+          voiceInputBtn.style.color = '#4b5563';
+        };
+
+        recognition.onerror = (event) => {
+          console.error('Speech recognition error:', event.error);
+          voiceInputBtn.style.backgroundColor = '#e5e7eb';
+          voiceInputBtn.style.color = '#4b5563';
+        };
+      } else {
+        voiceInputBtn.style.display = 'none';
+      }
+
+      // Send image
+      sendImageBtn.addEventListener('click', () => {
+        const imageUrl = 'https://i.imgur.com/k26rE0z.jpg'; // Sample image URL
+        appendMessage('', 'user', 'image', imageUrl);
+        chatHistory.push({ text: 'I sent an image.', sender: 'user', type: 'image', data: imageUrl });
+        saveChatHistory();
+
+        const typingMessage = appendMessage('Hanabi is typing...', 'ai');
+        
+        // Simulated AI response for the image
+        setTimeout(() => {
+          messagesContainer.removeChild(typingMessage);
+          const aiResponse = "Seriously? You sent me a picture of that? Okay, fine. What's the chismis about this one?";
+          appendMessage(aiResponse, 'ai');
+          chatHistory.push({ text: aiResponse, sender: 'ai' });
+          saveChatHistory();
+          speakText(aiResponse);
+        }, 2000); // Wait 2 seconds for a simulated response
+      });
+
+      sendBtn.addEventListener('click', () => sendMessage(userInput.value));
+      userInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          sendMessage(userInput.value);
+        }
+      });
+      
+      loadChatHistory();
+    });
+  </script>
+</body>
+</html>
